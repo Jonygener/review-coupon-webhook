@@ -1,6 +1,8 @@
-# app.py (upraveno)
+# app.py
 import os
 import requests
+import random
+import string
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from datetime import datetime
@@ -13,8 +15,9 @@ SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL")
 KLAVIYO_API_KEY = os.getenv("KLAVIYO_API_KEY")
 SHOPIFY_API_VERSION = "2023-10"
 
-app = Flask(__name__)
+LOG_FILE = "coupon_log.txt"
 
+app = Flask(__name__)
 
 def shopify_headers(token):
     return {
@@ -22,16 +25,14 @@ def shopify_headers(token):
         "X-Shopify-Access-Token": token,
     }
 
-
 def get_customer_by_email(email):
     url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/customers/search.json?query=email:{email}"
-    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN), verify=False)  # WARNING: verify=False only for development
+    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN), verify=False)
     resp.raise_for_status()
     data = resp.json()
     if data['customers']:
         return data['customers'][0]
     return None
-
 
 def update_customer_tags(customer_id, new_tag):
     url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/customers/{customer_id}.json"
@@ -41,14 +42,13 @@ def update_customer_tags(customer_id, new_tag):
             "tags": new_tag
         }
     }
-    resp = requests.put(url, json=payload, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN), verify=False)  # WARNING: verify=False only for development
+    resp = requests.put(url, json=payload, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN))
     resp.raise_for_status()
     return resp.json()
 
-
 def get_variant_id_from_product(product_id):
     url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/products/{product_id}.json"
-    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN), verify=False)  # WARNING: verify=False only for development
+    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN))
     resp.raise_for_status()
     product = resp.json()['product']
     if product['variants']:
@@ -56,13 +56,22 @@ def get_variant_id_from_product(product_id):
     else:
         raise ValueError("No variants found for the given product.")
 
+def generate_coupon_code(length=12):
+    characters = string.ascii_uppercase + string.digits
+    return ''.join(random.choices(characters, k=length))
+
+def log_coupon(email, code):
+    with open(LOG_FILE, "a") as f:
+        f.write(f"{datetime.utcnow().isoformat()} | {email} | {code}\n")
 
 def create_discount_code(email, product_variant_id, product_id):
     url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/price_rules.json"
 
+    discount_code_value = generate_coupon_code()
+
     price_rule = {
         "price_rule": {
-            "title": f"Review_Discount_{product_id}",
+            "title": f"Review_Discount_{product_id}_{discount_code_value}",
             "target_type": "line_item",
             "target_selection": "entitled",
             "allocation_method": "across",
@@ -76,22 +85,23 @@ def create_discount_code(email, product_variant_id, product_id):
         }
     }
 
-    price_resp = requests.post(url, json=price_rule, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)  # WARNING: verify=False only for development
+    price_resp = requests.post(url, json=price_rule, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN))
     price_resp.raise_for_status()
     price_rule_id = price_resp.json()['price_rule']['id']
 
     discount_code_url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/price_rules/{price_rule_id}/discount_codes.json"
-    discount_code_value = f"REVIEW-{product_id}"
     discount_code = {
         "discount_code": {
             "code": discount_code_value
         }
     }
 
-    discount_resp = requests.post(discount_code_url, json=discount_code, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)  # WARNING: verify=False only for development
+    discount_resp = requests.post(discount_code_url, json=discount_code, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN))
     discount_resp.raise_for_status()
-    return discount_resp.json(), discount_code_value
 
+    log_coupon(email, discount_code_value)
+
+    return discount_resp.json(), discount_code_value
 
 def update_klaviyo_profile(email, discount_code):
     url = "https://a.klaviyo.com/api/profiles/"
@@ -114,7 +124,6 @@ def update_klaviyo_profile(email, discount_code):
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
     return response.json()
-
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -139,11 +148,12 @@ def webhook():
     update_customer_tags(customer["id"], updated_tags)
 
     variant_id = get_variant_id_from_product(product_id)
+
     discount_data, discount_code_value = create_discount_code(email, variant_id, product_id)
+
     update_klaviyo_profile(email, discount_code_value)
 
     return jsonify({"message": "Tag updated, discount created, profile updated."}), 200
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
