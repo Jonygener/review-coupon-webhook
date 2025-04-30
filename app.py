@@ -80,9 +80,9 @@ def create_discount_code(email, product_variant_id, product_id):
             "allocation_method": "across",
             "value_type": "percentage",
             "value": -5.0,
-            "customer_selection": "prerequisite",
-            "prerequisite_customer_emails": [email],
+            "customer_selection": "all",
             "entitled_variant_ids": [product_variant_id],
+            "once_per_customer": True,
             "usage_limit": 1,
             "starts_at": datetime.utcnow().isoformat() + "Z"
         }
