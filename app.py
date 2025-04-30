@@ -134,7 +134,13 @@ def update_klaviyo_profile(email, discount_code):
             }
         }
     }
+    print("DEBUG Klaviyo payload:")
+    print(json.dumps(payload, indent=2))
+
     response = requests.post(url, headers=headers, json=payload, verify=False)
+    print("DEBUG Klaviyo response:")
+    print(response.status_code)
+    print(response.text)
     response.raise_for_status()
     return response.json()
 
@@ -147,7 +153,6 @@ def webhook():
     if not email or not product_input:
         return jsonify({"error": "Missing email or product_id"}), 400
 
-    # Extract numeric ID from GraphQL-style string if needed
     if isinstance(product_input, str):
         match = re.search(r"Product/(\d+)", product_input)
         if match:
