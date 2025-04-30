@@ -4,6 +4,7 @@ import re
 import requests
 import random
 import string
+import json
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from datetime import datetime
@@ -88,7 +89,7 @@ def create_discount_code(email, product_variant_id, product_id):
     }
 
     print("DEBUG price_rule payload:")
-    print(price_rule)
+    print(json.dumps(price_rule, indent=2))
 
     try:
         price_resp = requests.post(url, json=price_rule, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
