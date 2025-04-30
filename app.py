@@ -122,6 +122,7 @@ def update_klaviyo_profile(email, discount_code):
         "Authorization": f"Klaviyo-API-Key {KLAVIYO_API_KEY}",
         "Content-Type": "application/json",
         "accept": "application/json",
+        "revision": "2024-10-15"
     }
     payload = {
         "data": {
@@ -142,6 +143,10 @@ def update_klaviyo_profile(email, discount_code):
     print(response.status_code)
     print(response.text)
     response.raise_for_status()
+
+    with open(LOG_FILE, "a") as f:
+        f.write(f"{datetime.utcnow().isoformat()} | {email} | Klaviyo profile updated with code {discount_code}\n")
+
     return response.json()
 
 @app.route("/webhook", methods=["POST"])
