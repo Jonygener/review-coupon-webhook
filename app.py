@@ -48,7 +48,7 @@ def update_customer_tags(customer_id, new_tag):
 
 def get_variant_id_from_product(product_id):
     url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/products/{product_id}.json"
-    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN), verify=False)
+    resp = requests.get(url, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
     resp.raise_for_status()
     product = resp.json()['product']
     if product['variants']:
