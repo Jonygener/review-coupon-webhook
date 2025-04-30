@@ -86,6 +86,9 @@ def create_discount_code(email, product_variant_id, product_id):
         }
     }
 
+    print("DEBUG price_rule payload:")
+    print(price_rule)
+
     try:
         price_resp = requests.post(url, json=price_rule, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
         price_resp.raise_for_status()
