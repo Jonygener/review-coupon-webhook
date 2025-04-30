@@ -42,13 +42,13 @@ def update_customer_tags(customer_id, new_tag):
             "tags": new_tag
         }
     }
-    resp = requests.put(url, json=payload, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN))
+    resp = requests.put(url, json=payload, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN), verify=False)
     resp.raise_for_status()
     return resp.json()
 
 def get_variant_id_from_product(product_id):
     url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/products/{product_id}.json"
-    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN))
+    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN), verify=False)
     resp.raise_for_status()
     product = resp.json()['product']
     if product['variants']:
@@ -85,7 +85,7 @@ def create_discount_code(email, product_variant_id, product_id):
         }
     }
 
-    price_resp = requests.post(url, json=price_rule, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN))
+    price_resp = requests.post(url, json=price_rule, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
     price_resp.raise_for_status()
     price_rule_id = price_resp.json()['price_rule']['id']
 
@@ -96,7 +96,7 @@ def create_discount_code(email, product_variant_id, product_id):
         }
     }
 
-    discount_resp = requests.post(discount_code_url, json=discount_code, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN))
+    discount_resp = requests.post(discount_code_url, json=discount_code, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
     discount_resp.raise_for_status()
 
     log_coupon(email, discount_code_value)
@@ -121,7 +121,7 @@ def update_klaviyo_profile(email, discount_code):
             }
         }
     }
-    response = requests.post(url, headers=headers, json=payload)
+    response = requests.post(url, headers=headers, json=payload, verify=False)
     response.raise_for_status()
     return response.json()
 
