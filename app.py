@@ -1,5 +1,6 @@
 # app.py
 import os
+import re
 import requests
 import random
 import string
@@ -137,10 +138,23 @@ def update_klaviyo_profile(email, discount_code):
 def webhook():
     data = request.get_json()
     email = data.get("email")
-    product_id = data.get("product_id")
+    product_input = data.get("product_id")
 
-    if not email or not product_id:
+    if not email or not product_input:
         return jsonify({"error": "Missing email or product_id"}), 400
+
+    # Extract numeric ID from GraphQL-style string if needed
+    if isinstance(product_input, str):
+        match = re.search(r"Product/(\d+)", product_input)
+        if match:
+            product_id = int(match.group(1))
+        else:
+            try:
+                product_id = int(product_input)
+            except ValueError:
+                return jsonify({"error": "Invalid product_id format"}), 400
+    else:
+        product_id = product_input
 
     customer = get_customer_by_email(email)
     if not customer:
