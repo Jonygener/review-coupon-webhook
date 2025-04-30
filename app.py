@@ -74,11 +74,10 @@ def create_discount_code(email, product_variant_id, product_id):
         "price_rule": {
             "title": price_rule_title,
             "target_type": "line_item",
-            "target_selection": "entitled",
+            "target_selection": "all",
             "allocation_method": "across",
             "value_type": "percentage",
             "value": -5.0,
-            "entitled_variant_ids": [product_variant_id],
             "usage_limit": 1,
             "starts_at": datetime.utcnow().isoformat() + "Z"
         }
