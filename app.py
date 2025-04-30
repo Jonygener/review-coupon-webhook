@@ -60,18 +60,19 @@ def generate_coupon_code(length=12):
     characters = string.ascii_uppercase + string.digits
     return ''.join(random.choices(characters, k=length))
 
-def log_coupon(email, code):
+def log_coupon(email, code, payload):
     with open(LOG_FILE, "a") as f:
-        f.write(f"{datetime.utcnow().isoformat()} | {email} | {code}\n")
+        f.write(f"{datetime.utcnow().isoformat()} | {email} | {code} | {payload}\n")
 
 def create_discount_code(email, product_variant_id, product_id):
     url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/price_rules.json"
 
     discount_code_value = generate_coupon_code()
+    price_rule_title = f"Discount_{discount_code_value}"
 
     price_rule = {
         "price_rule": {
-            "title": f"Review_Discount_{product_id}_{discount_code_value}",
+            "title": price_rule_title,
             "target_type": "line_item",
             "target_selection": "entitled",
             "allocation_method": "across",
@@ -85,8 +86,12 @@ def create_discount_code(email, product_variant_id, product_id):
         }
     }
 
-    price_resp = requests.post(url, json=price_rule, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
-    price_resp.raise_for_status()
+    try:
+        price_resp = requests.post(url, json=price_rule, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
+        price_resp.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        return None, f"Error creating price rule: {e}"
+
     price_rule_id = price_resp.json()['price_rule']['id']
 
     discount_code_url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/price_rules/{price_rule_id}/discount_codes.json"
@@ -96,10 +101,13 @@ def create_discount_code(email, product_variant_id, product_id):
         }
     }
 
-    discount_resp = requests.post(discount_code_url, json=discount_code, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
-    discount_resp.raise_for_status()
+    try:
+        discount_resp = requests.post(discount_code_url, json=discount_code, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
+        discount_resp.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        return None, f"Error creating discount code: {e}"
 
-    log_coupon(email, discount_code_value)
+    log_coupon(email, discount_code_value, price_rule_title)
 
     return discount_resp.json(), discount_code_value
 
@@ -150,10 +158,12 @@ def webhook():
     variant_id = get_variant_id_from_product(product_id)
 
     discount_data, discount_code_value = create_discount_code(email, variant_id, product_id)
+    if not discount_data:
+        return jsonify({"error": discount_code_value}), 500
 
     update_klaviyo_profile(email, discount_code_value)
 
-    return jsonify({"message": "Tag updated, discount created, profile updated."}), 200
+    return jsonify({"message": "Tag updated, discount created, profile updated.", "code": discount_code_value}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
