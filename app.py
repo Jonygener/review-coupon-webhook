@@ -25,7 +25,7 @@ def shopify_headers(token):
 
 def get_customer_by_email(email):
     url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/customers/search.json?query=email:{email}"
-    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN))
+    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN), verify=False)
     resp.raise_for_status()
     data = resp.json()
     if data['customers']:
