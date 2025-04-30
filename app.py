@@ -117,28 +117,40 @@ def create_discount_code(email, product_variant_id, product_id):
     return discount_resp.json(), discount_code_value
 
 def update_klaviyo_profile(email, discount_code):
-    url = "https://a.klaviyo.com/api/profiles/"
+    search_url = f"https://a.klaviyo.com/api/profiles/?filter=email%3D{email}"
     headers = {
         "Authorization": f"Klaviyo-API-Key {KLAVIYO_API_KEY}",
         "Content-Type": "application/json",
         "accept": "application/json",
         "revision": "2024-10-15"
     }
+
+    search_resp = requests.get(search_url, headers=headers, verify=False)
+    search_resp.raise_for_status()
+    data = search_resp.json()
+
+    if not data.get("data"):
+        raise Exception("Profile not found in Klaviyo.")
+
+    profile_id = data["data"][0]["id"]
+
+    patch_url = f"https://a.klaviyo.com/api/profiles/{profile_id}"
     payload = {
         "data": {
             "type": "profile",
+            "id": profile_id,
             "attributes": {
-                "email": email,
                 "properties": {
                     "last_review_coupon": discount_code
                 }
             }
         }
     }
-    print("DEBUG Klaviyo payload:")
+
+    print("DEBUG Klaviyo PATCH payload:")
     print(json.dumps(payload, indent=2))
 
-    response = requests.post(url, headers=headers, json=payload, verify=False)
+    response = requests.patch(patch_url, headers=headers, json=payload, verify=False)
     print("DEBUG Klaviyo response:")
     print(response.status_code)
     print(response.text)
