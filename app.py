@@ -77,7 +77,7 @@ def create_discount_code(email, product_variant_id, product_id):
             "target_selection": "entitled",
             "allocation_method": "across",
             "value_type": "percentage",
-            "value": "-5.0",
+            "value": -5.0,
             "customer_selection": "prerequisite",
             "prerequisite_customer_emails": [email],
             "entitled_variant_ids": [product_variant_id],
