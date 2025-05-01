@@ -148,7 +148,7 @@ def webhook():
     review_tag = f"review_{product_id}"
 
     if review_tag in existing_tags:
-        return jsonify({"message": "Tag already exists", "coupon_created": False}), 200
+        return jsonify({"message": "Tag already exists", "coupon_assigned": False}), 200
 
     updated_tags = existing_tags + f", {review_tag}" if existing_tags else review_tag
     update_customer_tags(customer["id"], updated_tags)
@@ -157,7 +157,7 @@ def webhook():
     discount_code_value = create_discount_code(email, variant_id)
     update_klaviyo_profile(email, discount_code_value)
 
-    return jsonify({"message": "Coupon created", "coupon_code": discount_code_value, "coupon_created": True}), 200
+    return jsonify({"message": "Coupon created", "coupon_code": discount_code_value, "coupon_assigned": True}), 200
 
 
 if __name__ == "__main__":
