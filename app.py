@@ -1,11 +1,10 @@
 import os
-import json
 import requests
+import random
+import string
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from datetime import datetime
-import random
-import string
 
 load_dotenv()
 
@@ -23,10 +22,6 @@ def shopify_headers(token):
         "Content-Type": "application/json",
         "X-Shopify-Access-Token": token,
     }
-
-
-def generate_random_code(length=12):
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
 
 def get_customer_by_email(email):
@@ -52,10 +47,10 @@ def update_customer_tags(customer_id, new_tag):
     return resp.json()
 
 
-def get_variant_id_from_product_gid(product_gid):
-    product_id = product_gid.split('/')[-1]
-    url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/products/{product_id}.json"
-    resp = requests.get(url, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
+def get_variant_id_from_product(product_id):
+    product_id_clean = product_id.split("/")[-1]  # Extract numeric ID
+    url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/products/{product_id_clean}.json"
+    resp = requests.get(url, headers=shopify_headers(SHOPIFY_ACCESS_TOKEN), verify=False)
     resp.raise_for_status()
     product = resp.json()['product']
     if product['variants']:
@@ -64,45 +59,63 @@ def get_variant_id_from_product_gid(product_gid):
         raise ValueError("No variants found for the given product.")
 
 
-def create_discount_code(code, variant_id):
+def generate_discount_code():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
+
+
+def create_discount_code(email, product_variant_id):
+    discount_code = generate_discount_code()
     url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/price_rules.json"
-    payload = {
+    price_rule = {
         "price_rule": {
-            "title": f"Discount_{code}",
+            "title": f"Discount_{discount_code}",
             "target_type": "line_item",
             "target_selection": "entitled",
             "allocation_method": "across",
             "value_type": "percentage",
             "value": -5.0,
             "customer_selection": "all",
-            "entitled_variant_ids": [variant_id],
+            "entitled_variant_ids": [product_variant_id],
             "once_per_customer": True,
             "usage_limit": 1,
             "starts_at": datetime.utcnow().isoformat() + "Z"
         }
     }
-    print("DEBUG price_rule payload:", payload)
-    resp = requests.post(url, json=payload, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
-    resp.raise_for_status()
-    return resp.json()
+    print("DEBUG price_rule payload:", price_rule)
+    price_resp = requests.post(url, json=price_rule, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
+    price_resp.raise_for_status()
+
+    rule_id = price_resp.json()['price_rule']['id']
+    discount_code_url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/price_rules/{rule_id}/discount_codes.json"
+    discount_code_payload = {
+        "discount_code": {
+            "code": discount_code
+        }
+    }
+    discount_resp = requests.post(discount_code_url, json=discount_code_payload, headers=shopify_headers(DISCOUNT_ACCESS_TOKEN), verify=False)
+    discount_resp.raise_for_status()
+
+    return discount_code
 
 
 def update_klaviyo_profile(email, discount_code):
-    search_url = "https://a.klaviyo.com/api/profiles/search"
     headers = {
         "Authorization": f"Klaviyo-API-Key {KLAVIYO_API_KEY}",
-        "revision": "2023-10-15",
-        "Content-Type": "application/json"
+        "Revision": "2023-10-15",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
     }
-    search_payload = {"filter": {"email": email}}
-    search_resp = requests.post(search_url, headers=headers, json=search_payload, verify=False)
-    search_resp.raise_for_status()
-    profile_data = search_resp.json()
-    if not profile_data['data']:
-        raise ValueError("Klaviyo profile not found")
-    profile_id = profile_data['data'][0]['id']
 
-    update_url = f"https://a.klaviyo.com/api/profiles/{profile_id}"
+    search_url = f"https://a.klaviyo.com/api/profiles/?filter=email=\"{email}\""
+    search_resp = requests.get(search_url, headers=headers, verify=False)
+    search_resp.raise_for_status()
+    results = search_resp.json().get("data", [])
+    if not results:
+        raise Exception("Profile not found in Klaviyo")
+
+    profile_id = results[0]['id']
+
+    update_url = f"https://a.klaviyo.com/api/profiles/{profile_id}/"
     payload = {
         "data": {
             "type": "profile",
@@ -114,19 +127,17 @@ def update_klaviyo_profile(email, discount_code):
             }
         }
     }
-    print("DEBUG Klaviyo payload:", payload)
-    response = requests.patch(update_url, headers=headers, json=payload, verify=False)
-    response.raise_for_status()
-    return response.json()
+    patch_resp = requests.patch(update_url, headers=headers, json=payload, verify=False)
+    patch_resp.raise_for_status()
 
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
     email = data.get("email")
-    product_gid = data.get("product_id")
+    product_id = data.get("product_id")
 
-    if not email or not product_gid:
+    if not email or not product_id:
         return jsonify({"error": "Missing email or product_id"}), 400
 
     customer = get_customer_by_email(email)
@@ -134,8 +145,7 @@ def webhook():
         return jsonify({"error": "Customer not found"}), 404
 
     existing_tags = customer.get("tags", "")
-    product_id_part = product_gid.split("/")[-1]
-    review_tag = f"review_{product_id_part}"
+    review_tag = f"review_{product_id.split('/')[-1]}"
 
     if review_tag in existing_tags:
         return jsonify({"message": "Tag already exists. Nothing to do."}), 200
@@ -143,10 +153,8 @@ def webhook():
     updated_tags = existing_tags + f", {review_tag}" if existing_tags else review_tag
     update_customer_tags(customer["id"], updated_tags)
 
-    variant_id = get_variant_id_from_product_gid(product_gid)
-    discount_code = generate_random_code()
-    create_discount_code(discount_code, variant_id)
-
+    variant_id = get_variant_id_from_product(product_id)
+    discount_code = create_discount_code(email, variant_id)
     update_klaviyo_profile(email, discount_code)
 
     return jsonify({"message": "Tag updated, discount created, profile updated."}), 200
